@@ -1,0 +1,233 @@
+---
+title: "NYPD Shootings Data"
+author: "Leandro Mercanti"
+date: "2024-07-30"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This project analyzes a dataset of all shooting incidents in NYC from 2006 to the end of last year. It aims to identify trends and patterns in gun violence to support public safety initiatives and inform policy decisions.
+
+<br>
+
+#### Library Tidyverse:
+```{r Library_Tidyverse, echo=TRUE}
+library(tidyverse)
+```
+
+<br>
+
+#### Download the dataset here: 
+
+Link here: <"https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD/">
+
+<br>
+
+#### Read the dataset into R: 
+
+```{r NYPD_Dataset_Reading, echo=TRUE}
+nypd_dataset <- read_csv("NYPD_Shooting_Incident_Data__Historic_.csv")
+```
+
+<br>
+
+#### Look at a summary of the dataset: 
+
+```{r NYPD_Dataset_Summary, echo=TRUE}
+summary(nypd_dataset)
+glimpse(nypd_dataset)
+```
+
+<br>
+
+#### Cleaning up the Dataset and making the data tidy: 
+
+1. Rename columns for date and time (rename)
+2. Convert DATE column to Date type (mutate)
+3. Convert some columns to Factor (as.factor)
+4. Remove unnecessary columns (select)
+
+```{r NYPD_Dataset_Cleaning, echo=TRUE}
+nypd_dataset <- nypd_dataset %>%
+  rename(DATE = OCCUR_DATE,
+         TIME = OCCUR_TIME) %>%
+  mutate(DATE = mdy(DATE),
+         BORO = as.factor(BORO),
+         STATISTICAL_MURDER_FLAG = as.factor(STATISTICAL_MURDER_FLAG),
+         PERP_AGE_GROUP = as.factor(PERP_AGE_GROUP),
+         PERP_SEX = as.factor(PERP_SEX),
+         PERP_RACE = as.factor(PERP_RACE)) %>%
+  select(-c(X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+```
+
+<br>
+
+#### Take another look at a summary of the dataset after the cleaning: 
+
+```{r NYPD_Dataset_Summary_2, echo=TRUE}
+summary(nypd_dataset)
+glimpse(nypd_dataset)
+```
+
+<br>
+
+#### Checking for missing data: 
+
+```{r NYPD_Dataset_Missing_Data, echo=TRUE}
+missing_data <- sum(is.na(nypd_dataset))
+missing_data
+```
+
+<br>
+
+#### Summary of columns with missing data: 
+
+```{r NYPD_Dataset_Summary_of_Missing_Data, echo=TRUE}
+colSums(is.na(nypd_dataset))
+```
+
+<br>
+
+#### Handling missing data:
+
+Some columns have too many missing data rows to be useful for analysis and will be excluded from the dataset:
+
+```{r NYPD_Dataset_Removing_Unuseful_Columns, echo=TRUE}
+nypd_dataset <- nypd_dataset %>%
+  select(-c(LOC_OF_OCCUR_DESC, LOCATION_DESC, PERP_RACE, PERP_AGE_GROUP, LOC_CLASSFCTN_DESC, PERP_SEX))
+```
+
+<br>
+
+And then, for simplicity, all rows with any NA values will be removed:
+
+```{r NYPD_Dataset_Removing_Missing_Data, echo=TRUE}
+nypd_dataset <- na.omit(nypd_dataset)
+```
+
+<br>
+
+Confirming there is no longer any missing data:
+
+```{r NYPD_Dataset_Confirming_No_Missing_Data, echo=TRUE}
+sum(is.na(nypd_dataset))
+```
+
+<br>
+
+#### Data Analysis of Victims per Race:
+
+```{r NYPD_Dataset_Analysis_Victims_per_Race, echo=TRUE}
+nypd_per_race <- nypd_dataset %>%
+  group_by(VIC_RACE) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  arrange(VIC_RACE)
+nypd_per_race
+```
+
+<br>
+
+#### Plot of Victims per Race:
+(Filtering out races with less than 500 cases)
+
+```{r NYPD_Dataset_Plot_Victims_per_Race, echo=TRUE}
+nypd_per_race %>%
+  filter(count > 500) %>%
+  ggplot(aes(x = VIC_RACE, y = count, fill = VIC_RACE)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Incidents by Victim Race", x = "", y = "Number of Incidents")
+```
+
+
+
+#### Data Analysis with Incidents per Boro per Year:
+
+```{r NYPD_Dataset_Analysis_Incidents_per_Boro_per_Year, echo=TRUE}
+nypd_per_boro_per_year <- nypd_dataset %>%
+  mutate(YEAR = year(DATE)) %>%
+  group_by(BORO, YEAR) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  arrange(BORO, YEAR)
+nypd_per_boro_per_year
+```
+
+<br>
+
+#### Plot with Incidents per Boro per Year:
+
+```{r NYPD_Dataset_Plot_Incidents_per_Boro_per_Year, echo=TRUE}
+nypd_per_boro_per_year %>%
+  ggplot(aes(x = YEAR, y = count, color = BORO)) +
+  geom_line() +
+  labs(title = "Incidents per Boro per Year", x = "Year", y = "Number of Incidents")
+```
+
+<br>
+
+#### Model with Incidents per Year:
+
+Creating a dataset with the total number of incidents per year:
+
+```{r NYPD_Dataset_Total_Incidents_per_Year, echo=TRUE}
+nypd_per_year <- nypd_dataset %>%
+  mutate(YEAR = year(DATE)) %>%
+  group_by(YEAR) %>%
+  summarize(total_incidents = n(), .groups = 'drop')
+```
+
+<br>
+
+Fitting a linear model for incidents per year:
+
+```{r NYPD_Linear_Model_Incidents_per_Year, echo=TRUE}
+lin_mod <- lm(total_incidents ~ YEAR, data = nypd_per_year)
+summary(lin_mod)
+```
+
+<br>
+
+Plotting this linear model for incidents per year:
+
+```{r NYPD_Plotting_Model_Incidents_per_Year, echo=TRUE}
+nypd_per_year %>%
+  ggplot(aes(x = YEAR, y = total_incidents)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Total Shooting Incidents per Year with Linear Trend",
+       x = "Year",
+       y = "Total Incidents")
+```
+
+<br>
+
+### Conclusion
+
+This project has provided a detailed analysis of NYPD shooting incident data from 2006 to 2023. The investigation revealed several key trends and patterns in incidents across different boroughs and victim demographics. 
+Importantly, the data showed fluctuations in the number of incidents per borough over the years and highlighted disparities in the impact of gun violence on different racial groups.
+
+<br>
+
+#### Key Findings
+1. **Incidents per Borough per Year:** The analysis revealed distinct trends in gun violence incidents across the five boroughs of New York City, with certain boroughs experiencing more fluctuations in the number of incidents over the years.
+2. **Victims per Race:** The data indicated that certain racial groups were disproportionately affected by gun violence. 
+
+<br>
+
+#### Potential Sources of Bias
+
+While this analysis provides valuable insights, it is important to acknowledge potential sources of bias that could affect the findings:
+
+1. **Selection Bias:** The dataset may not be fully representative of all shooting incidents due to potential underreporting or inconsistencies in data collection practices. 
+
+2. **Measurement Bias:** Inaccuracies in recording the date, time, and other incident details could lead to measurement bias. 
+
+3. **Exclusion of Missing Data:** My decision to exclude columns with excessive missing data and to remove rows with any NA values may have introduced bias by potentially omitting relevant information. It is important to recognize this limitation.
+
+4. **Personal Bias:** As the author, my background and perspectives may influence the interpretation of the data.
+
+
